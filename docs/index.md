@@ -222,7 +222,7 @@ Observamos que ahora Producto es el que tiene mayor peso y nos va a dar un gran 
 
 
 <div style="text-align:center">
-<img src="./images/5_distribucion_sentimientos.png"/>
+<img src="./images/5_distribucion_sentimiento.png"/>
 </div>
 
 Para este momento lo que se hará es trabajar con weight_class y f1 score como lo hicimos previamente, pero sería de depurar más la información que se encontraba en las encuestas, ya que el sistema que realiza estas encuestas tiene una manera peculiar de etiquetar el sentimiento.
