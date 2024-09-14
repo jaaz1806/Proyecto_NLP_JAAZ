@@ -16,6 +16,8 @@ La estructura de la data era el mensaje del usuario, junto con el motivo si era 
 ## Dataset
 
 El dataset corresponde a los comentario que escriben los clientes respecto a la atencion en ciertos locales comerciales, este dataset tiene los comentarios y en ciertos casos si es sobre los productos o sobre en si el servicio, aqui lo que se hará es con los mensajes en los que se tiene la categoria del mensaje, poder entrenar un modelo para poder leer los mensajes que no tienen y completar la data, con el fin de poder conocer el mensaje asi sea bueno o malo respecto a que categoria fue.
+
+
 | responseid | comentario | sentimiento | categoria |
 |------------|------------|-------------|-----------|
 | R_5yh7OyznCm1OQgh | Muy buena la atención | Positivo | NaN |
@@ -143,7 +145,10 @@ Pesos de las clases:
 ## Creación del modelo
 
 Realizamos la optimización de hiperparámetros para un modelo de red neuronal LSTM utilizando Keras Tuner. Define una función build_model que crea un modelo secuencial con capas de Embedding, LSTM y Dense, donde el número de capas LSTM, sus unidades y tasas de dropout son hiperparámetros ajustables. Utiliza el algoritmo Hyperband para buscar la mejor configuración de hiperparámetros, maximizando el F1-score en el conjunto de validación.
+
 Teniendo como resultados
+
+
 | Value | Best Value So Far | Hyperparameter |
 |-------|-------------------|----------------|
 | 2 | 2 | num_lstm_layers |
@@ -169,6 +174,8 @@ Otra capa de Dropout: Con tasa 0, efectivamente no hace nada.
 Capa Dense final: Con activación softmax, produce la distribución de probabilidad sobre las clases.
 
 Al probar con el conjunto de test tenemos los siguientes resultados
+
+
 | | precision | recall | f1-score | support |
 |---|-----------|--------|----------|---------|
 | 0 | 0.55 | 0.67 | 0.60 | 265 |
@@ -252,6 +259,8 @@ De igual manera se usó keras_turner para probar diferentes configuraciones e hi
 Se configuro esta red y se obtuvieron los siguientes resultados
 
 ### Reporte de clasificación para sentimiento:
+
+
 |              | precision | recall | f1-score | support |
 |--------------|------------|--------|----------|---------|
 | 0            | 0.43       | 0.63   | 0.51     | 569     |
@@ -263,6 +272,8 @@ Se configuro esta red y se obtuvieron los siguientes resultados
 | weighted avg | 0.87       | 0.66   | 0.74     | 11216   |
 
 ### Reporte de clasificación para categoría:
+
+
 |              | precision | recall | f1-score | support |
 |--------------|------------|--------|----------|---------|
 | 0            | 0.96       | 0.94   | 0.95     | 7782    |
