@@ -1,96 +1,58 @@
-# Starbucks Capstone Challenge
+# Análisis de sentimientos
 
-## Introduction
-
-Starbucks has provided a dataset that emulates the behavior of
-customers using the Starbucks rewards mobile app. The Starbucks app
-provides a way to advertise and share offers with the
-customers. Customers can also use it to pay at the stores. Starbucks
-sends different types of advertisement and offers once every few days to their
-customers. A customer might get one of the following:
-
-- Informational offer (i.e., mere advertisement)
-- Discount offer
-- Buy one get one free (BOGO) offer
-
-Discount and BOGO offers have a challenge, that is, the customer must
-make a minimum purchase before it can redeem the offer. Additionally,
-each offer has an expiration date. In the case of the informational
-offers, the expiration date is when the customer stop feeling the
-influence of the advertisement.
-
-The data provided includes the demographics of each customer, the app
-activity of customers for a period of 30 days. It includes the
-timestamps of when a costumer received, viewed and completed an offer,
-when a purchase was done, and the amount of money spent.
+## Introducción
+En el entorno altamente competitivo de las empresas que venden o alquilan aparatos POS, la retención de clientes es crucial para el éxito sostenido. Identificar cuando un cliente se quiere retirar y lograr retenerlo es una necesidad estratégica. En este caso particular es más costoso conseguir un nuevo clinete que retenerlo. Prevenir la fuga de clientes permite ahorrar recursos y poder detectar molestias de los clientes que al solucionarlos permitirán aumentar su satisfacción y convivencia con la empresa.
 
 
-## Problem Statement
 
-The goal of sending advertisement and offers to customers is to
-increase the customer purchases. However, it would be naive to send
-all offers to all customers at the same time. The goal of the project
-is to take advantage of the transactions and demographics data to
-determine the offers that should be targeted to different groups of
-customers.
 
-## Datasets
+## Problema
 
-The following data files have been provided and included in the project's [repo](https://github.com/aproano2/starbucks)
+En los últimos meses se ha encontrado una pérdida de clientes con tendencia creciente, que han dejado de transaccionar con la empresa, el objetivo del proyecto de tesis general es identificar los posibles fugas de clientes.
+Para esto contamos con información de transacciones a nivel de red que opera y de tipo de tarjeta, así como de los casos crm.
+Estos casos de atención al cliente eran el objetivo del proyecto de esta materia, poder analizar si los comentarios del cliente eran positivos o negativos.
+La estructura de la data era el mensaje del usuario, junto con el motivo si era por equipo o manteniemitno o por temas administrativos o de servicio. Se consiguió una data con las mismas caracteristicas pero respecto a tiendas, para poder sustituir el dataset de las llamadas.
 
-- `portfolio.json` contains the details of each offer: duration, reward, type, etc
-- `profile.json` contains demographic information of customer
-- `transcript.json` contains all customers activity: transactions, offers received, offers viewed, and offers completed.
+## Dataset
 
-The datasets were cleaned and merged in a way that each row includes
-customers activity, customers demographics and offers metadata.
+El dataset corresponde a los comentario que escriben los clientes respecto a la atencion en ciertos locales comerciales, este dataset tiene los comentarios y en ciertos casos si es sobre los productos o sobre en si el servicio, aqui lo que se hará es con los mensajes en los que se tiene la categoria del mensaje, poder entrenar un modelo para poder leer los mensajes que no tienen y completar la data, con el fin de poder conocer el mensaje asi sea bueno o malo respecto a que fue.
 
 
 ## Data Analysis
 
 ### Population
 
-From the datasets, we first note that the simulated data was obtained
-for a period of 29.75 days, with 306,534 events. Each event represents
-a transaction, an offer received, an offer viewed, or an offer
-completed.
+Primero verificamos cuantos registros tenemos y cuantos son los que se encuentran con el registro de categoría lleno.
 
 <div style="text-align:center">
-<img src="./images/population.png"/>
+<img src="./images/1_cantidad de datos.png"/>
 </div>
 
-The figure shows the distribution of the population based on gender,
-income and age. We note that around 8,500 customers are male, 6,100
-are female and around 200 belong to other gender. In the case of the
-income, we observe that curve roughly approaches a normal curve with a
-mean around 65,000 and a standard deviation of 21,000. Finally, the
-age also seems to approach a normal distribution. It is truncated on
-the left side of the curve due to the fact that a customer must be 18
-years or older to be part of the Starbucks program. The mean of the
-age is 54 years and the standard deviation is 17.
+En la gráfica podemos observar que en total de registros se tiene 56077 de los que solo 3501 corresponde a registros que nos indica si el comentario fue respecto a tema de productos o del servicio que recibieron.
 
-### Expense
+### Distribución de las categorías
 
 <div style="text-align:center">
-<img src="./images/expense.png"/>
+<img src="./images/2_distribucionDeCategorias.png"/>
 </div>
 
-Now, we observe that the average expense of a single transaction
-follows a bimodal distribution. The first lobe is centered around $2.5
-and the second one around $18. In the case of the distribution of the
-total expense done by a customer the values seems to decrease
-exponentially.
+Se observa un desbalance entre los que son producto y Servicio, por lo que habrá que buscar ese balance para el análisis
+Vemos algunos ejemplos de comentarios por cada categoria.
 
-<div style="text-align:center">
-<img src="./images/expense_gender.png"/>
-</div>
+| Categoría | Índice | Comentario |
+|-----------|--------|------------|
+| Servicio  | 16     | deben de cambiar a la jefa de la local y al su... |
+| Servicio  | 63     | Buenas noches ayúdeme por favor últimamente no... |
+| Servicio  | 103    | pésimo asesoramiento del chico flaco de la eco... |
+| Servicio  | 114    | El personal es demasiado lento para la atenció... |
+| Servicio  | 175    | La compra que realizaba era de $12 10 centavos... |
+| Producto  | 94     | Casi nunca tienen la medicina que busco, o la ... |
+| Producto  | 96     | Muestran una supuesta oferta, te cobran lo que... |
+| Producto  | 122    | Todo.bien ❤️ |
+| Producto  | 130    | Me vendieron un medicamento que no es, mi rece... |
+| Producto  | 137    | Excelente servicio  recomendados |
 
-When separating the data based on gender, we note that the women make
-average purchases of $17.5, others of $15 and men of $12. However, we
-also note that the total amount of money spent by men and women is
-similar (~85,000) while others spend a fraction of that. This is
-distributions are directly affected by the number of members of each
-gender group.
+
 
 <div style="text-align:center">
 <img src="./images/expense_income.png"/>
