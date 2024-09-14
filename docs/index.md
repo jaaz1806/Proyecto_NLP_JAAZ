@@ -15,12 +15,18 @@ La estructura de la data era el mensaje del usuario, junto con el motivo si era 
 
 ## Dataset
 
-El dataset corresponde a los comentario que escriben los clientes respecto a la atencion en ciertos locales comerciales, este dataset tiene los comentarios y en ciertos casos si es sobre los productos o sobre en si el servicio, aqui lo que se hará es con los mensajes en los que se tiene la categoria del mensaje, poder entrenar un modelo para poder leer los mensajes que no tienen y completar la data, con el fin de poder conocer el mensaje asi sea bueno o malo respecto a que fue.
+El dataset corresponde a los comentario que escriben los clientes respecto a la atencion en ciertos locales comerciales, este dataset tiene los comentarios y en ciertos casos si es sobre los productos o sobre en si el servicio, aqui lo que se hará es con los mensajes en los que se tiene la categoria del mensaje, poder entrenar un modelo para poder leer los mensajes que no tienen y completar la data, con el fin de poder conocer el mensaje asi sea bueno o malo respecto a que categoria fue.
+| responseid | comentario | sentimiento | categoria |
+|------------|------------|-------------|-----------|
+| R_5yh7OyznCm1OQgh | Muy buena la atención | Positivo | NaN |
+| R_6mx9YuxgU7Ei7v5 | Q sigan así adelante | Positivo | NaN |
+| R_19p3PhMPU8C6bH2 | Sigan haciendo descuentos con diferentes produ... | Positivo | NaN |
+| R_1QgI4QkBJqh26Rj | EXCELENTE ATENCIÓN | Positivo | NaN |
+| R_5QFDe9k5xm3Dwxk | Ninguna. Gracias | Positivo | NaN |
 
 
 ## Data Analysis
 
-### Population
 
 Primero verificamos cuantos registros tenemos y cuantos son los que se encuentran con el registro de categoría lleno.
 
@@ -52,307 +58,241 @@ Vemos algunos ejemplos de comentarios por cada categoria.
 | Producto  | 130    | Me vendieron un medicamento que no es, mi rece... |
 | Producto  | 137    | Excelente servicio  recomendados |
 
+### Preprocesamiento de datos
+Se crea una función preprocess_text que limpia y preprocesa texto (convierte a minúsculas, elimina acentos y caracteres especiales, tokeniza, y elimina stopwords).
+```
+def preprocess_text(text):
+    # Convertir a minúsculas
+    text = text.lower()
+    
+    # Eliminar acentos
+    text = ''.join(c for c in unicodedata.normalize('NFD', text)
+                   if unicodedata.category(c) != 'Mn')
+    
+    # Eliminar caracteres especiales y números
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    
+    # Tokenizar
+    tokens = word_tokenize(text)
+    
+    # Eliminar stopwords
+    stop_words = set(stopwords.words('spanish'))
+    tokens = [token for token in tokens if token not in stop_words]
+    
+    # Unir los tokens de vuelta a una cadena
+    return ' '.join(tokens)
+
+```
+Datos preprocesados
+
+| comentario_procesado | categoria_encoded |
+|----------------------|-------------------|
+| deben cambiar jefa local supervisor desposta a... | 1 |
+| buenas noches ayudeme favor ultimamente envian... | 1 |
+| casi nunca medicina busco incompleta precios m... | 0 |
+| muestran supuesta oferta cobran aparece pagina... | 0 |
+| pesimo asesoramiento chico flaco economica par... | 1 |
+
+
+
+Se realiza el tokenizado, se crea la matriz de embedding utilizando los vectores de Word2Vec y realizamos el padding.
+Y realizamos la división en train validation y test
+```
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.utils import to_categorical
+
+# Tokenizar primero
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(texto_con_categoria['comentario_procesado'])
+sequences = tokenizer.texts_to_sequences(texto_con_categoria['comentario_procesado'])
+
+# Actualizar vocab_size
+vocab_size = len(tokenizer.word_index) + 1
+
+# Entrenar el modelo Word2Vec con las secuencias tokenizadas
+sentences = [[tokenizer.index_word[w] for w in seq] for seq in sequences]
+word2vec_model = Word2Vec(sentences, vector_size=100, window=5, min_count=2, workers=4, sg=1)
+
+# Crear una matriz de embeddings
+embedding_matrix = np.zeros((vocab_size, 100))
+for word, i in tokenizer.word_index.items():
+    if word in word2vec_model.wv:
+        embedding_matrix[i] = word2vec_model.wv[word]
+    else:
+        # Para palabras no en Word2Vec, usar un vector aleatorio
+        embedding_matrix[i] = np.random.normal(0, np.sqrt(0.25), 100)
+
+# Añadir padding a las secuencias
+max_length = max([len(seq) for seq in sequences])
+X = pad_sequences(sequences, maxlen=max_length)
+
+```
+## Class_weight
+Al tener datos desbalanceados procedemos a crear una función de class_weight para poder obtener los pesos para el balanceo dentro de la LSTM.
+```
+class_weights = class_weight.compute_class_weight(
+    class_weight='balanced',
+    classes=np.unique(y_train_val.argmax(axis=1)),  # Convertimos de one-hot a etiquetas numéricas
+    y=y_train_val.argmax(axis=1)
+)
+```
+Pesos de las clases:
+{0: 1.35, 1: 0.79}
+
+## Creación del modelo
+
+Realizamos la optimización de hiperparámetros para un modelo de red neuronal LSTM utilizando Keras Tuner. Define una función build_model que crea un modelo secuencial con capas de Embedding, LSTM y Dense, donde el número de capas LSTM, sus unidades y tasas de dropout son hiperparámetros ajustables. Utiliza el algoritmo Hyperband para buscar la mejor configuración de hiperparámetros, maximizando el F1-score en el conjunto de validación.
+Teniendo como resultados
+| Value | Best Value So Far | Hyperparameter |
+|-------|-------------------|----------------|
+| 2 | 2 | num_lstm_layers |
+| 256 | 32 | lstm_units_0 |
+| 0.3 | 0.3 | dropout_0 |
+| 0.00092673 | 0.0046642 | learning_rate |
+| 128 | 256 | lstm_units_1 |
+| 0 | 0 | dropout_1 |
+| 128 | 32 | lstm_units_2 |
+| 0.4 | 0 | dropout_2 |
+| 2 | 2 | tuner/epochs |
+| 0 | 0 | tuner/initial_epoch |
+| 4 | 4 | tuner/bracket |
+| 0 | 0 | tuner/round |
+
+La red neuronal está estructurada de la siguiente manera:
+Capa de Embedding: Convierte los índices de palabras en vectores densos de 100 dimensiones. Usa una matriz de embedding pre-entrenada y no es entrenable.
+Capa de Masking: Ignora los valores de padding (0) en los cálculos subsiguientes.
+Primera capa LSTM: Con 32 unidades, retorna secuencias completas para la siguiente capa.
+Capa de Dropout: Con una tasa de 0.3, ayuda a prevenir el sobreajuste.
+Segunda capa LSTM: Con 256 unidades, retorna solo la salida final.
+Otra capa de Dropout: Con tasa 0, efectivamente no hace nada.
+Capa Dense final: Con activación softmax, produce la distribución de probabilidad sobre las clases.
+
+Al probar con el conjunto de test tenemos los siguientes resultados
+| | precision | recall | f1-score | support |
+|---|-----------|--------|----------|---------|
+| 0 | 0.55 | 0.67 | 0.60 | 265 |
+| 1 | 0.77 | 0.67 | 0.71 | 436 |
+| accuracy | | | 0.67 | 701 |
+| macro avg | 0.66 | 0.67 | 0.66 | 701 |
+| weighted avg | 0.69 | 0.67 | 0.67 | 701 |
+
+Y la matriz de confusion
 
 
 <div style="text-align:center">
-<img src="./images/expense_income.png"/>
+<img src="./images/3_matriz_de_confusion.png"/>
 </div>
 
-In the case of the average transaction and the total expense, we see
-that the values increase as the income of the customer increases,
-which is expected. People that make less than $30,000 have an average
-transaction of $6 while people making more than $90,000 have
-transactions of more than $25. In the case of the total expense, the
-values go from $60 to $180 in the same range of income.
+El modelo muestra un rendimiento moderado, con una precisión global del 67%. La clase 1 ("Servicio") tiene un mejor desempeño que la clase 0 ("Producto"), con un F1-score de 0.71 frente a 0.60.
+Aunque el rendimiento es aceptable se podría trabajar con el desbalance, utilizando diferentes valores en el weight_class o diferentes configuraciones en la LSTM
+
+Una vez que tenemos el modelo procedemos a mandar como input los comentarios que no tenían categoria y tenemos los siguientes resultados:
+
+
+| responseid | comentario | sentimiento | categoria |
+|------------|------------|-------------|-----------|
+| R_5yh7OyznCm1OQgh | Muy buena la atención | Positivo | Producto |
+| R_6mx9YuxgU7Ei7v5 | Q sigan así adelante | Positivo | Producto |
+| R_19p3PhMPU8C6bH2 | Sigan haciendo descuentos con diferentes produ... | Positivo | Producto |
+| R_1QgI4QkBJqh26Rj | EXCELENTE ATENCIÓN | Positivo | Producto |
+| R_5QFDe9k5xm3Dwxk | Ninguna. Gracias | Positivo | Producto |
+| R_6aKsVnzkbXSnFEB | Sigan con la buena atención | Positivo | Servicio |
+| R_6qeZi8CmkbO0Ajb | Positivo | Positivo | Producto |
+| R_7IY4FcQkfVJx3nF | Tiene todo producto y el personal es amable | Positivo | Producto |
+| R_7C3f0QYdsF0KPoL | Lo que no me agrada es que la factura electrón... | Positivo | Servicio |
+
+
+Una vez que tenemos las dos columnas llenas procedemos a crear un nuevo modelo que nos diga si el mensaje es de que sentimiento y de que categoria, se realizaron los mismos procedimientos previos de preprocesamiento, tokenizacion y embedding.
+Analizamos la distribución nueva de categorías:
+
 
 <div style="text-align:center">
-<img src="./images/expense_age.png"/>
+<img src="./images/4_nueva_distribucion.png"/>
 </div>
 
-As in the case of income, the spending behavior is similar with
-age. As the value of age increases so do the average transaction and
-the total expense values. The average transaction value goes from a value of
-$8 for people under 20 to a value of $17 for people above
-55. Similarly, the total expense goes from $80 in a month to almost
-$140.
+Observamos que ahora Producto es el que tiene mayor peso y nos va a dar un gran desbalance, pero si analizamos los sentimientos vemos que el desbalance es aún mayor
 
-### Offers
 
 <div style="text-align:center">
-<img src="./images/offer_distro.png"/>
+<img src="./images/5_distribucion_sentimientos.png"/>
 </div>
 
-The figure above shows the distribution of offers received by
-customers. We note that each 30,000 discount and bogo offers have been
-received, and 15,000 informational ones. The latter offer is half of
-the others since there are only two informational offer and there are
-four discount and four bogo. Moreover, we note that each offer has
-been received by around 7,600 customers. This detail is important
-since the simulated data does not have any bias towards an specific
-offer, each customer has the same changes of receiving any offer.
-
-## Offer Recommendation
-
-Based on the data we have observed, we noticed that different customer
-groups have different spending habits, that might be influenced by the
-fact that they received an offer or not. For instance, the correlation
-coefficient of `0.52` suggest that there is a moderate correlation
-between the net expense (i.e., `total expense - reward received`) and
-the whether a customer completed an offer or not. Similarly, the
-correlation with the completion of bogo and discount offers is `0.39`
-and `0.40`, respectively. Finally, we observe a moderate correlation
-of 0.38 with the income of the customers.
-
-These correlation indicate that offers should be targeted to customers
-based on their income or their transaction behavior. To take this into
-account, a knowledge-based recommendation system was implemented.
-
-### Simple System
-
-Initially, we consider a simple system that recommends an
-offer that has been completed by a group of customers with the highest
-median of the net expense value. This system assumes a dependency
-between offer completion and net expense, and aims at maximizing the
-net expense.
-
-In order to use significant samples, we impose the following conditions:
-
-1. Customers with positive net expense.
-2. Customers with at least 5 transactions completed.
-3. Only use customers that viewed and completed the offer.
-
-The first condition is due to the fact that some customers received
-more rewards than the amount of money they spent. This is possible due
-to the fact that (a) a customer might have multiple offers active at
-the same time, and (b) a transaction might help multiple offers to
-reach their goal.
-
-The second condition is necessary so we consider customers engaged
-with the offer/reward system. Finally, the third condition also
-targets at considering customer engaged with the system. There are a
-few customers that completed offers without knowing that they received
-an offer.
-
-As an example of this simple recommendation system, we call the
-program and it provides the following list of offers sorted in the
-order of recommendation.
-
+Para este momento lo que se hará es trabajar con weight_class y f1 score como lo hicimos previamente, pero sería de depurar más la información que se encontraba en las encuestas, ya que el sistema que realiza estas encuestas tiene una manera peculiar de etiquetar el sentimiento.
+Para un próximo análisis se recomienda usar un modelo pre-entrenado como los de Hugging Face Transformer para que analice el comentario y le coloque si es positivo, negativo o neutro.
 ```
-> offers = get_most_popular_offers(customers, n_top=10, q=0.9)
-> print(offers[0])
-
-['B1', 'D1', 'B2', 'D3', 'D4', 'B3', 'B4', 'D2', 'I1', 'I2']
-
-> print(offers[1])
-
-{'B1': 285.569, 'D1': 279.355, 'B2': 276.955, 'D3':
-273.03100000000006, 'D4': 271.94599999999997, 'B3': 264.44, 'B4':
-264.42499999999995, 'D2': 256.57800000000003, 'I1': 237.5660000000001,
-'I2': 230.64800000000002}
+from transformers import pipeline
+classifier = pipeline("zero-shot-classification")
 
 ```
 
-The output show us that the offer associated to customers with the
-highest median net expense is `B1`, followed by `D1` and `B2`, the
-least recommended offer was `I2`. Note that the difference in the net
-expense between the best and worst offers (e.g., `B1` and `I2`,
-respectively) is around `$55`. We also compared these median values
-to the customers that do not meet the conditions to be considered part
-of our recommendation system.
-
-```
-> customers[customers.total_transactions < 5].net_expense.median()
-16.27
-```
-
-This value is significantly lower to the ones of customers engaged
-with the offer system.
 
 
-### System with Demographics Consideration
+## Entrenamiento de la red
 
-As it is stated before, the net expense variable is also correlated to
-the income of the customers. So it would make sense to add some
-filtering to the recommendation system so that it benefits from this
-data and helps us target more specific users.
+De igual manera se usó keras_turner para probar diferentes configuraciones e hiperparámetros dando como hasta le momento mejor configuración
+
+| Best Value So Far | Hyperparameter     |
+|-------------------|-------------------|
+| 128               | lstm_units         |
+| 0.1               | dropout_rate       |
+| 0.00071686        | learning_rate      |
+| None              | num_lstm_layers    |
+| None              | lstm_units_0       |
+| None              | dropout_rate_0     |
+| None              | lstm_units_1       |
+| None              | dropout_rate_1     |
+| None              | lstm_units_2       |
+| None              | dropout_rate_2     |
+| 2                 | tuner/epochs       |
+| 0                 | tuner/initial_epoch|
+| 3                 | tuner/bracket      |
+| 0                 | tuner/round        |
+
+Se configuro esta red y se obtuvieron los siguientes resultados
+
+### Reporte de clasificación para sentimiento:
+|              | precision | recall | f1-score | support |
+|--------------|------------|--------|----------|---------|
+| 0            | 0.43       | 0.63   | 0.51     | 569     |
+| 1            | 0.11       | 0.48   | 0.18     | 780     |
+| 2            | 0.95       | 0.68   | 0.79     | 9867    |
+
+| accuracy     |            |        | 0.66     | 11216   |
+| macro avg    | 0.50       | 0.60   | 0.50     | 11216   |
+| weighted avg | 0.87       | 0.66   | 0.74     | 11216   |
+
+### Reporte de clasificación para categoría:
+|              | precision | recall | f1-score | support |
+|--------------|------------|--------|----------|---------|
+| 0            | 0.96       | 0.94   | 0.95     | 7782    |
+| 1            | 0.86       | 0.92   | 0.89     | 3434    |
+
+| accuracy     |            |        | 0.93     | 11216   |
+| macro avg    | 0.91       | 0.93   | 0.92     | 11216   |
+| weighted avg | 0.93       | 0.93   | 0.93     | 11216   |
+
+Sentimiento: El modelo tiene un buen desempeño en la 2, pero tiene dificultades significativas en las clases minoritarias, lo que sugiere que los datos están desbalanceados. COmo se menciono anteriormente, sería recomendable usar modelo preentrenados para obtener la columna se snetimiento y ahí veremos como la categoría neutral incrementa y tendremos sentimientos consistentes con los mensajes d elos comentarios. De igual manera podemos usar diferentes valores para la weight_class y seguir haciendo pruebas.
+
+Categoría: El modelo funciona mucho mejor en esta tarea, logrando una precisión, recall y F1-score altos para ambas clases. El desempeño es mucho más consistente, lo que indica que el modelo tiene menos problemas con el desbalance en esta tarea.
+
+Observamos que en sentimientos la matriz de confusión no es tan buena
+
 
 <div style="text-align:center">
-<img src="./images/b2_by_expense.png"/>
+<img src="./images/6_matriz_2.png"/>
 </div>
 
-The figure shows the average expense of the customers that received,
-viewed and completed the `B2` offer. The received-offer plots consider
-the customers that received the offer but did not view it. The
-viewed-offer plots represent the customers that viewed the offer but
-did not complete it. Finally, the completed-offer plots are for the
-customers that view and completed the offer.
-
-We note that customers that complete the offer spend significantly
-more than those that do not. However, for customers that make more
-than $80,000, the viewed-offer customers spend more in each
-transaction average than the ones that completed the offer. This might
-be an indication that a different offer might be a better fit for them.
-
-To incorporate such information to our recommendation system, we add
-filters that help filter the dataset used in the offer ranking. The
-filters limit the population based on age, income and gender. For
-instance, let's consider two customers that make $95,000 and $100,000,
-respectively. As we discussed before, the population that makes more
-than $80,000 might have a different top offer recommended.
-
-```
-> get_most_popular_offers_filtered(customers, n_top=10, income=95000)[0]
-
-['B3', 'D3', 'D1', 'D4', 'B1', 'D2', 'B4', 'B2', 'I1', 'I2']
-
-> get_most_popular_offers_filtered(customers, n_top=10, income=95000)[1]
-
-{'B3': 204.325, 'D3': 204.22000000000003, 'D1': 204.21, 'D4':
- 197.41000000000003, 'B1': 196.62, 'D2': 195.17, 'B4': 187.98, 'B2':
- 186.17000000000002, 'I1': 185.275, 'I2': 180.41500000000002}
-
-> get_most_popular_offers_filtered(customers, n_top=10, income=100000)[0]
-
-['D2', 'D3', 'D1', 'D4', 'B4', 'B1', 'B2', 'I2', 'B3', 'I1']
-
-> get_most_popular_offers_filtered(customers, n_top=10, income=100000)[1]
-
-{'D2': 201.49, 'D3': 197.95000000000002, 'D1': 197.71, 'D4':
- 188.07999999999998, 'B4': 188.035, 'B1': 184.52499999999998, 'B2':
- 184.20999999999998, 'I2': 182.87999999999997, 'B3': 176.68, 'I1':
- 164.555}
-```
-
-The system with filters picks `B3` for the customer that makes $95,000
-and `D2` for the one with $100,000. Let's take a look a the population
-net expense plots for the first customer. 
+Pero en análisis de categoría si mejora:
 
 <div style="text-align:center">
-<img src="./images/b3_by_income.png"/>
+<img src="./images/7_matriz_2.png"/>
 </div>
 
-Here we note that for an income of $90,000 and $105,000 the average
-transaction value for completed `B3` offers is greater than for viewed
-offers. In the case of the net expense, the values for completed
-offers are always greater than the ones for viewed offers.
-
-Finally, in our population analysis, we noted that women make
-transactions of higher value when compared to men and other
-genders. Let's see if that is reflected in our recommendation system.
-
-```
-> get_most_popular_offers_filtered(customers, n_top=10, gender='M')[0]
-
-['B2', 'D1', 'B1', 'D4', 'B3', 'B4', 'D3', 'I1', 'D2', 'I2']
-
-> get_most_popular_offers_filtered(customers, n_top=10, gender='M')[1]
-
-{'B2': 138.835, 'D1': 136.89000000000001, 'B1': 136.45, 'D4': 126.485,
- 'B3': 119.77000000000001, 'B4': 115.60999999999999, 'D3': 110.4,
- 'I1': 109.575, 'D2': 101.88, 'I2': 71.00500000000001}
-```
-
-We note that for men, the offer recommended is the same as the one
-picked by the simple recommendation system. This might be due to the
-fact that the total customer population has men as a majority.
-
-```
-> get_most_popular_offers_filtered(customers, n_top=10, gender='F')[0]
-
-['D1', 'D4', 'B1', 'D3', 'B2', 'B4', 'D2', 'I1', 'B3', 'I2']
-
-> get_most_popular_offers_filtered(customers, n_top=10, gender='F')[1]
-
-{'D1': 154.83, 'D4': 154.62, 'B1': 153.745, 'D3': 153.59000000000003,
- 'B2': 150.37, 'B4': 145.21999999999997, 'D2': 145.03000000000003,
- 'I1': 142.23, 'B3': 141.60999999999999, 'I2': 132.5}
-```
-
-<div style="text-align:center">
-<img src="./images/d1_gender.png"/>
-</div>
-
-In the case of female, the selection changes and it favors `D1`, which
-clearly has higher values of net expense and average
-transactions. Moreover, when compared with the selection of the simple
-system, there is a difference of $3.5 in the median net expense.
 
 
-```
-> get_most_popular_offers_filtered(customers, n_top=10, gender='O')[0]
+## Conclusiones
 
-['B3', 'D4', 'B1', 'D3', 'D1', 'D2', 'B2', 'I1', 'B4', 'I2']
+Para la sección de análisis de categoría se observó un desempeño aceptable, pero que si puede mejorar limpiando la data desde la sección de las encuestas, de igual manera probando con diferentes pesos o técnicas para el desbalanceo que es lo que un poco afecto estos resultados.
+Para la segunda sección el desbalance crece demasiado en los sentimientos lo que podría mejorarse con modelos pre entrenados muy seguramente disminuye este desbalanceo y tendremos un dataset más acorde con los comentarios.
 
-> get_most_popular_offers_filtered(customers, n_top=10, gender='O')[1]
-
-{'B3': 162.78000000000003, 'D4': 162.78000000000003, 'B1': 160.93,
- 'D3': 160.42000000000002, 'D1': 143.25, 'D2': 142.73999999999998,
- 'B2': 138.84, 'I1': 129.65499999999997, 'B4': 122.44, 'I2':
- 88.63000000000001}
-
-```
-
-<div style="text-align:center">
-<img src="./images/b3_gender.png"/>
-</div>
-
-In the case of other gender, the difference between the simple
-recommendation system and the one with filters is even higher. We note
-a difference of $24 between the offers picked by the two systems.
-
-## Formal evaluation
-
-In order to formally evaluate these methods, we should pick a control
-and test groups with real users. The two recommendation systems can be
-used together. That is, the simple systems should be use for customers
-that do not provide their personal information, while the one with
-filters can be used for customers that do.
-
-In this experiment, the control group would be subject to a random
-distribution of offers in which each user has the same odds of
-receiving the offer. This distribution mimics the same used to
-generate the simulated data provided for this analysis. The control
-group would use the two recommendation systems provided in this
-project.
-
-For evaluation metrics, we can measure the user engagement by keeping
-track of the ratio between received offers and viewed-and-completed
-offers. Also, it would be important to keep track of values that
-reflect the customer purchase habits such as the net expense, the
-total number of transactions and the average transaction value. If
-these recommendation systems are successful we should see a significant
-improvement in customer/offer engagement as well as an increase in the
-purchase behavior of the customer.
-
-## Conclusions
-
-This project provided a way to implement a real recommendation system
-from scratch. The process was engaging since it required the
-implementation of all the steps of the data science methodology. It
-was interesting as well as difficult to decide what kind of data to
-use for the analysis. The project could have taken different
-directions if other aspects of the data were taken into account. For
-instance, instead of using the net expense and the average transaction
-value, we could have used the frequency at which offers were
-completed, or what was the time that customer took to completed an
-offer after viewing it. This was possible thanks to the timestamps
-provided in the datasets.
-
-Also, other recommendation systems could have been explored. Modeling
-the data could have been another choice to recommend offers. This was
-not picked since the simulated data made a lot of simplifications in
-comparison to the real app. The mathematical model would have needed
-considerable adjustments in order to be used in a production
-systems. Picking metrics and methods than can be used in both the
-simulated system and the production system was considered in the
-design.
-
-To improve the recommendation system, we could include other
-metrics. For instance, the frequency at which offers are completed
-would add an interesting dimension to the system. Also, our system
-does not take into account the number of valid offers a customer has a
-given time. As we noted in our analysis, some customers took advantage
-of this to maximize the reward received at the least possible
-expense. To prevent this from happening, the company could limit the
-number of offers a customer receives, or if the customer has multiple
-offers, a purchase only helps the completion of a single offer.
